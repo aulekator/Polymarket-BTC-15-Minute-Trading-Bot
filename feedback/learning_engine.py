@@ -7,6 +7,8 @@ from decimal import Decimal
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
+import json
+from pathlib import Path
 from loguru import logger
 
 import os
@@ -67,6 +69,10 @@ class LearningEngine:
         
         # Learning history
         self._weight_adjustments: List[Dict[str, Any]] = []
+        self.state_file = Path(os.getenv("LEARNING_STATE_FILE", "learning_state.json"))
+
+        # Try to restore learned weights from previous runs
+        self._load_state()
         
         logger.info(
             f"Initialized Learning Engine "
@@ -214,14 +220,16 @@ class LearningEngine:
         # Calculate optimal weights
         new_weights = self.calculate_optimal_weights(performances)
         
+        old_weights = self.fusion.weights.copy()
+
         # Log changes
         logger.info("Weight adjustments:")
         for source, new_weight in new_weights.items():
-            old_weight = self.fusion.weights.get(source, 0.0)
-            change = new_weight - old_weight
+            previous = old_weights.get(source, 0.0)
+            change = new_weight - previous
             
             logger.info(
-                f"  {source}: {old_weight:.3f} → {new_weight:.3f} "
+                f"  {source}: {previous:.3f} → {new_weight:.3f} "
                 f"({change:+.3f})"
             )
         
@@ -231,8 +239,8 @@ class LearningEngine:
         
         # Record adjustment
         self._weight_adjustments.append({
-            "timestamp": datetime.now(),
-            "old_weights": self.fusion.weights.copy(),
+            "timestamp": datetime.now().isoformat(),
+            "old_weights": old_weights,
             "new_weights": new_weights.copy(),
             "performances": {
                 source: {
@@ -244,10 +252,39 @@ class LearningEngine:
             },
         })
         
+        self.save_state()
         logger.info("✓ Weights optimized successfully")
         
         return new_weights
     
+    def _load_state(self) -> None:
+        """Load previously learned fusion weights from disk."""
+        if not self.state_file.exists():
+            return
+        try:
+            payload = json.loads(self.state_file.read_text())
+            weights = payload.get("weights", {})
+            if not isinstance(weights, dict):
+                return
+            for source, weight in weights.items():
+                self.fusion.set_weight(source, float(weight))
+            logger.info(f"Loaded learned weights from {self.state_file}")
+        except Exception as e:
+            logger.warning(f"Could not load learning state: {e}")
+
+    def save_state(self) -> None:
+        """Persist learned weights and recent adjustments to disk."""
+        try:
+            payload = {
+                "timestamp": datetime.now().isoformat(),
+                "weights": self.fusion.weights.copy(),
+                "recent_adjustments": self.get_learning_history(20),
+            }
+            self.state_file.write_text(json.dumps(payload, indent=2, default=str))
+            logger.info(f"Saved learning state to {self.state_file}")
+        except Exception as e:
+            logger.warning(f"Could not save learning state: {e}")
+
     def get_signal_rankings(self) -> List[Dict[str, Any]]:
         """
         Get signals ranked by performance.
