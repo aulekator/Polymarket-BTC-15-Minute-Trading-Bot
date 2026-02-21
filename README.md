@@ -129,6 +129,7 @@ STOP_LOSS_PCT=0.30
 TAKE_PROFIT_PCT=0.20
 SPIKE_THRESHOLD=0.15
 DIVERGENCE_THRESHOLD=0.05
+TRADE_SYMBOLS=BTC,ETH,SOL,XRP
 ```
 ## 5. Start Redis
 ```
@@ -154,8 +155,15 @@ python run_bot.py --test-mode
 python run_bot.py
 
 # Live trading mode (REAL MONEY!)
-python run_bot.py --live
+python run_bot.py --live --confirm-live
 ```
+
+Live safety requirements:
+- `--live` now also requires `--confirm-live`
+- set `LIVE_TRADING_ENABLED=YES_I_UNDERSTAND`
+- ensure `POLYMARKET_PK`, `POLYMARKET_API_KEY`, `POLYMARKET_API_SECRET`, and `POLYMARKET_PASSPHRASE` are set
+- Redis cannot switch into live mode at runtime unless `--allow-redis-live-switch` is provided
+
 ## ⚙️ Configuration Options
 Argument	Description	Default
 --test-mode	Trade every minute for testing	False
@@ -194,7 +202,7 @@ polymarket-btc-15m-bot/
 │   └── strategy_brain/          # Phase 4: Signal generation & processing
 │       ├── fusion_engine/       # Multi-signal combination logic
 │       ├── signal_processors/   # Individual detectors (spike, divergence, sentiment…)
-│       └── strategies/          # Main 15-minute BTC trading strategy
+│       └── strategies/          # Main 15-minute multi-asset trading strategy (BTC/ETH/SOL/XRP)
 │
 ├── data_sources/                # Phase 1: External market & sentiment data
 │   ├── binance/                 # Binance WebSocket client
