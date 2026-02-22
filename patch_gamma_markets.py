@@ -140,7 +140,8 @@ def apply_gamma_markets_patch():
             try:
                 markets = await gamma_markets.list_markets(
                     http_client=self._http_client, 
-                    filters=filters
+                    filters=filters,
+                    timeout=120.0
                 )
                 
                 self._log.info(f"✓ Gamma API returned {len(markets)} markets")

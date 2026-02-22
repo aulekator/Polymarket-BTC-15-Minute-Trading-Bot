@@ -150,11 +150,8 @@ bash
 # Test mode (trades every minute - for quick testing)
 python run_bot.py --test-mode
 
-# Normal mode (trades every 15 minutes)
-python run_bot.py
-
 # Live trading mode (REAL MONEY!)
-python run_bot.py --live
+python 15m_bot_runner.py --live
 ```
 ## ⚙️ Configuration Options
 Argument	Description	Default

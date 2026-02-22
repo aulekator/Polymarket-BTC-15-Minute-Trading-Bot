@@ -1,0 +1,140 @@
+# =============================================================================
+# CRITICAL — NEVER COMMIT THESE — FINANCIAL LOSS IF EXPOSED
+# =============================================================================
+
+# Environment files (contain private keys, API keys, passwords)
+.env
+.env.*
+.env.local
+.env.production
+.env.development
+*.env
+
+# Any file with "secret", "private", "key", "credential" in the name
+*secret*
+*private*
+*credential*
+*password*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Polymarket specific
+polymarket_keys.json
+wallet.json
+pk.txt
+private_key.txt
+
+# =============================================================================
+# PYTHON
+# =============================================================================
+
+# Virtual environment
+venv/
+env/
+.venv/
+.env/
+ENV/
+venv.bak/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.pyd
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+.eggs/
+wheels/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+
+# =============================================================================
+# BOT SPECIFIC
+# =============================================================================
+
+# Trade data (personal financial records)
+paper_trades.json
+trades.json
+trade_history.json
+*.trade
+
+# Logs (can contain sensitive info)
+logs/
+*.log
+nautilus_logs/
+
+# Bot state files
+bot_state.json
+last_trade.json
+
+# Performance data
+performance/
+*.perf
+
+# =============================================================================
+# NAUTILUS TRADER
+# =============================================================================
+.nautilus/
+nautilus_trader.db
+*.db
+*.sqlite
+*.sqlite3
+
+# =============================================================================
+# REDIS
+# =============================================================================
+dump.rdb
+*.rdb
+
+# =============================================================================
+# IDE & SYSTEM
+# =============================================================================
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+
+# =============================================================================
+# MISC
+# =============================================================================
+*.bak
+*.tmp
+*.temp
+*.swp
+*.swo
+node_modules/
+.cache/
