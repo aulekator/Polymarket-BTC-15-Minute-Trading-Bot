@@ -7,322 +7,270 @@
 [![Redis](https://img.shields.io/badge/Redis-powered-red.svg)](https://redis.io/)
 [![Grafana](https://img.shields.io/badge/Grafana-dashboard-orange)](https://grafana.com/)
 
-A production-grade algorithmic trading bot for **Polymarket's 15-minute BTC price prediction markets**. Built with a 7-phase architecture combining multiple signal sources, professional risk management, and self-learning capabilities.
-
-
----
-
-## 📋 **Table of Contents**
-- [Features](#features)
-- [Architecture](#architecture)
-- [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
-- [Configuration](#configuration)
-- [Running the Bot](#running-the-bot)
-- [Monitoring](#monitoring)
-- [Trading Modes](#trading-modes)
-- [Project Structure](#project-structure)
-- [Testing](#testing)
-- [Contributing](#contributing)
-- [FAQ](#faq)
-- [License](#license)
-- [Disclaimer](#disclaimer)
+A production-grade algorithmic trading bot for **Polymarket's 15-minute BTC price prediction markets**. Built with a 7-phase architecture combining 6 signal processors, a weighted fusion engine, trend-following with signal agreement, and self-learning weight optimization.
 
 ---
 
-## ✨ **Features**
+## 📋 Table of Contents
+
+- [Features](#-features)
+- [Architecture](#-architecture)
+- [Signal Processors](#-signal-processors)
+- [Prerequisites](#-prerequisites)
+- [Quick Start](#-quick-start)
+- [Configuration](#-configuration)
+- [Running the Bot](#-running-the-bot)
+- [Project Structure](#-project-structure)
+- [FAQ](#-faq)
+- [Disclaimer](#-disclaimer)
+
+---
+
+## ✨ Features
 
 | Feature | Description |
 |---------|-------------|
-| **7-Phase Architecture** | Modular, testable, production-ready design |
-| **Multi-Signal Intelligence** | Spike Detection, Sentiment Analysis, Price Divergence |
-| **Risk-First Design** | $1 max per trade, 30% stop loss, 20% take profit |
-| **Dual-Mode Operation** | Toggle between simulation and live without restart |
+| **7-Phase Architecture** | Modular pipeline: Data → Ingestion → NautilusTrader → Signals → Fusion → Risk → Execution |
+| **6 Signal Processors** | Spike Detection, Sentiment, Price Divergence, Order Book Imbalance, Tick Velocity, Deribit PCR |
+| **Trend + Signal Agreement** | Late-window trend filter (min 13) with configurable signal agreement gate |
+| **Parallel Data Fetching** | Sentiment, spot price, orderbook, and Deribit data fetched via `asyncio.gather` |
+| **Self-Learning Weights** | Learning engine attributes trades to signal sources and optimizes fusion weights |
+| **Risk-First Design** | $1 max per trade, daily loss limits, drawdown controls, daily stats auto-reset |
+| **Dual-Mode Operation** | Toggle simulation ↔ live via Redis without restart |
 | **Real-Time Monitoring** | Grafana dashboards + Prometheus metrics |
-| **Self-Learning** | Automatically optimizes signal weights based on performance |
-| **Auto-Recovery** | WebSocket auto-reconnection, rate limiting, data validation |
-| **Paper Trading** | Full P&L tracking in simulation mode |
+| **Paper Trading** | Full binary-outcome P&L simulation with probabilistic model |
 
 ---
 
-## 🏗️ **Architecture**
+## 🏗️ Architecture
 
-### **7-Phase Overview**
+### 7-Phase Pipeline
 
 ```mermaid
- flowchart LR
-    subgraph Input[INPUT]
-        D[External Data<br/>Coinbase, Binance, News, Solana]
+flowchart LR
+    subgraph Input["① DATA SOURCES"]
+        D[Coinbase Spot<br/>Fear & Greed<br/>CryptoPanic<br/>Deribit Options]
     end
-    
-    subgraph Process[PROCESSING]
-        I[Ingestion<br/>Unify & Validate]
-        N[Nautilus Core<br/>Trading Framework]
-        S[Signal Processors<br/>Spike, Sentiment, Divergence]
+
+    subgraph Process["② → ⑤ PROCESSING"]
+        N[NautilusTrader<br/>Quote Ticks]
+        S["6 Signal Processors<br/>(parallel pre-fetch)"]
         F[Fusion Engine<br/>Weighted Voting]
+        T[Trend Filter<br/>+ Signal Agreement]
     end
-    
-    subgraph Output[OUTPUT]
-        R[Risk Management<br/>$1 Max, Stop Loss]
-        E[Execution<br/>Polymarket Orders]
-        M[Monitoring<br/>Grafana Dashboard]
-        L[Learning<br/>Weight Optimization]
+
+    subgraph Output["⑥ → ⑦ OUTPUT"]
+        R[Risk Engine<br/>$1 Max, Limits]
+        E[Execution<br/>Polymarket CLOB]
+        L[Learning Engine<br/>Weight Optimization]
     end
-    
-    D --> I --> N --> S --> F --> R --> E --> M --> L
-    L -.-> F
+
+    D --> N --> S --> F --> T --> R --> E
+    E -.-> L -.-> F
 ```
-## Prerequisites
-- Python 3.14+ (Download)
 
-- Redis (Download) - for mode switching
+### Trade Decision Flow
 
-- Polymarket Account with API credentials
-- Git
+1. **Tick Processing** — `on_quote_tick` stores float prices in a `deque(maxlen=500)`
+2. **Trade Window** — At minutes 13–14 of each 15-min market, triggers decision
+3. **Context Fetch** — `asyncio.gather` fetches sentiment + spot + orderbook + Deribit PCR in parallel
+4. **Signal Generation** — 6 processors run on pre-fetched data (no blocking HTTP)
+5. **Fusion** — Weighted combination with configurable weights per processor
+6. **Trend Filter** — Price > 0.60 → buy YES, price < 0.40 → buy NO, else skip
+7. **Signal Agreement** — If fused direction disagrees with trend → skip (configurable)
+8. **Risk Check** — Position count, exposure, daily loss, drawdown limits
+9. **Execute** — Place order or record paper trade
+
+---
+
+## 📡 Signal Processors
+
+| Processor | Weight | Signal Type | Data Source |
+|-----------|--------|-------------|-------------|
+| **TickVelocity** | 25% | Momentum (30s/60s probability velocity) | Polymarket tick buffer |
+| **OrderBookImbalance** | 25% | Volume surge (bid/ask depth imbalance) | Polymarket CLOB (pre-fetched) |
+| **DeribitPCR** | 15% | Put/call ratio (institutional sentiment) | Deribit API (5-min cache) |
+| **SpikeDetection** | 15% | Mean-reversion (MA deviation + velocity) | Price history |
+| **PriceDivergence** | 10% | Spot momentum vs probability mispricing | Coinbase spot |
+| **SentimentAnalysis** | 10% | Fear & Greed + news sentiment | Alternative.me + CryptoPanic |
+
+All weights are configurable via `config.py` → `SIGNAL_WEIGHTS` dict.
+
+---
+
+## 📦 Prerequisites
+
+- **Python 3.14+** — [Download](https://www.python.org/downloads/)
+- **Redis** — [Download](https://redis.io/) (for mode switching)
+- **Polymarket Account** with API credentials
+- **Git**
+
+---
 
 ## 🚀 Quick Start
 
-## 1. Clone the Repository
+### 1. Clone & Install
 
 ```bash
 git clone https://github.com/yourusername/polymarket-btc-15m-bot.git
 cd polymarket-btc-15m-bot
-```
-## 2. Set Up Virtual Environment
 
-```bash
+python -m venv venv
 # Windows
-python -m venv venv
 venv\Scripts\activate
-
-# macOS / Linux
-python -m venv venv
+# macOS/Linux
 source venv/bin/activate
-```
-## 3. Install Dependencies
 
-```
-bash
 pip install -r requirements.txt
 ```
-## 4. Configure Environment Variables
-```
-bash
+
+### 2. Configure Environment
+
+```bash
 cp .env.example .env
-Edit .env with your credentials:
+```
 
-env
-# Polymarket API Credentials
-POLYMARKET_PK=your_private_key_here
-POLYMARKET_API_KEY=your_api_key_here
-POLYMARKET_API_SECRET=your_api_secret_here
-POLYMARKET_PASSPHRASE=your_passphrase_here
+Edit `.env`:
 
-# Redis Configuration
+```env
+# Polymarket API
+POLYMARKET_PK=your_private_key
+POLYMARKET_API_KEY=your_api_key
+POLYMARKET_API_SECRET=your_api_secret
+POLYMARKET_PASSPHRASE=your_passphrase
+
+# Redis
 REDIS_HOST=localhost
 REDIS_PORT=6379
 REDIS_DB=2
 
-# Trading Parameters
-MAX_POSITION_SIZE=1.0
-STOP_LOSS_PCT=0.30
-TAKE_PROFIT_PCT=0.20
-SPIKE_THRESHOLD=0.15
-DIVERGENCE_THRESHOLD=0.05
+# Optional: CryptoPanic news sentiment
+CRYPTOPANIC_API_KEY=your_cryptopanic_key
+
+# Signal Agreement (skip trades where signals contradict trend)
+REQUIRE_SIGNAL_AGREEMENT=true
 ```
-## 5. Start Redis
-```
-bash
-# Windows (download from redis.io)
+
+### 3. Start Redis & Run
+
+```bash
 redis-server
 
-# macOS
-brew install redis
-redis-server
+# Simulation mode (paper trading)
+python runner.py
 
-# Linux
-sudo apt install redis-server
-redis-server
-```
-## 6. Run the Bot
-```
-bash
-# Test mode (trades every minute - for quick testing)
-python run_bot.py --test-mode
+# Test mode (trades every minute for fast testing)
+python runner.py --test-mode
 
-# Live trading mode (REAL MONEY!)
-python 15m_bot_runner.py --live
+# LIVE trading (real money!)
+python runner.py --live
 ```
-## ⚙️ Configuration Options
-Argument	Description	Default
---test-mode	Trade every minute for testing	False
---live	Enable live trading (real money)	False
---no-grafana	Disable Grafana metrics	False
-##View Paper Trades
-```
-bash
-python view_paper_trades.py
-```
-## Trading Modes
-Switch Modes Without Restarting (Redis)
 
-# Switch to simulation mode (safe)
-```
-python redis_control.py sim -- not stable yet
-```
-# Switch to live trading mode (REAL MONEY!)
-```
-python redis_control.py live --not stable yet
-``` 
+---
+
+## ⚙️ Configuration
+
+All tunable parameters live in `config.py` and can be overridden via `.env`:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `POSITION_SIZE_USD` | `1.00` | Fixed trade size |
+| `TREND_UP_THRESHOLD` | `0.60` | Price above this → buy YES |
+| `TREND_DOWN_THRESHOLD` | `0.40` | Price below this → buy NO |
+| `TRADE_WINDOW_START` | `780` | Trade window start (seconds into 15-min interval) |
+| `TRADE_WINDOW_END` | `840` | Trade window end |
+| `REQUIRE_SIGNAL_AGREEMENT` | `true` | Skip trades where signals disagree with trend |
+| `MAX_PRICE_HISTORY` | `500` | Price history deque size (~2+ min at 4 ticks/sec) |
+| `TICK_BUFFER_SIZE` | `500` | Tick buffer for velocity processor |
+| `FUSION_MIN_SIGNALS` | `1` | Minimum signals needed for fusion |
+| `FUSION_MIN_SCORE` | `40` | Minimum fusion score to pass |
+| `LEARNING_TRIGGER_INTERVAL` | `10` | Optimize weights every N trades |
+
+---
+
 ## 📁 Project Structure
 
-```text
+```
 polymarket-btc-15m-bot/
-├── core/                        # Core business logic
-│   ├── ingestion/               # Phase 2: Data ingestion
-│   │   ├── adapters/            # Unified adapter interface
-│   │   ├── managers/            # Rate limiter, WebSocket manager, etc.
-│   │   └── validators/          # Data validation & schema checks
-│   ├── nautilus_core/           # Phase 3: NautilusTrader integration
-│   │   ├── data_engine/         # Nautilus data engine wrapper
-│   │   ├── event_dispatcher/    # Event handling & dispatching
-│   │   ├── instruments/         # BTC/USDT instrument definitions
-│   │   └── providers/           # Custom live/historical data providers
-│   └── strategy_brain/          # Phase 4: Signal generation & processing
-│       ├── fusion_engine/       # Multi-signal combination logic
-│       ├── signal_processors/   # Individual detectors (spike, divergence, sentiment…)
-│       └── strategies/          # Main 15-minute BTC trading strategy
+├── bot.py                       # Main strategy (IntegratedBTCStrategy)
+├── runner.py                    # NautilusTrader node setup & entry point
+├── config.py                    # All tunable parameters
+├── models.py                    # Data models (PaperTrade, etc.)
+├── paper_trading.py             # Paper trade simulation logic
 │
-├── data_sources/                # Phase 1: External market & sentiment data
-│   ├── binance/                 # Binance WebSocket client
-│   ├── coinbase/                # Coinbase REST API client
-│   ├── news_social/             # Fear & Greed Index + social sentiment
-│   └── solana/                  # Solana RPC (optional / experimental)
+├── core/strategy_brain/
+│   ├── fusion_engine/
+│   │   └── signal_fusion.py     # Weighted signal fusion (6 processors)
+│   └── signal_processors/
+│       ├── base_processor.py    # Abstract base + TradingSignal dataclass
+│       ├── spike_detector.py    # MA deviation + velocity spikes
+│       ├── sentiment_processor.py
+│       ├── divergence_processor.py
+│       ├── orderbook_processor.py
+│       ├── tick_velocity_processor.py
+│       └── deribit_pcr_processor.py
 │
-├── execution/                   # Phase 5: Order placement & risk control
-│   ├── execution_engine.py      # Main order execution coordinator
-│   ├── polymarket_client.py     # Polymarket API wrapper & order logic
-│   └── risk_engine.py           # Position sizing, SL/TP, exposure limits
+├── data_sources/
+│   ├── coinbase/adapter.py      # BTC spot price (5s timeout)
+│   └── news_social/adapter.py   # Fear & Greed + CryptoPanic (15-min cache)
 │
-├── monitoring/                  # Phase 6: Performance tracking & metrics
-│   ├── grafana_exporter.py      # Prometheus metrics exporter
+├── execution/
+│   ├── risk_engine.py           # Position limits, daily loss, drawdown
+│   └── execution_engine.py      # Order placement
+│
+├── monitoring/
+│   ├── grafana_exporter.py      # Prometheus metrics
 │   └── performance_tracker.py   # Trade logging & statistics
 │
-├── feedback/                    # Phase 7: Future learning / optimization
-│   └── learning_engine.py       # Placeholder for ML feedback loop
+├── feedback/
+│   └── learning_engine.py       # Signal attribution + weight optimization
 │
-├── grafana/                     # Grafana dashboard & configuration
-│   ├── dashboard.json           # Pre-built dashboard definition
-│   ├── grafana.ini              # Grafana server config (optional)
-│   └── import_dashboard.py      # Script to import dashboard automatically
-│
-├── scripts/                     # Development & testing utilities
-│   ├── test_data_sources.py
-│   ├── test_ingestion.py
-│   ├── test_nautilus.py
-│   ├── test_strategy.py
-│   └── test_execution.py
-│
-├── .env.example                 # Template for environment variables
-├── .gitignore
-├── patch_gamma_markets.py       # Temporary patch/fix for Polymarket API
-├── redis_control.py             # Switch trading mode (sim/live/test)
-├── requirements.txt             # Python dependencies
-├── run_bot.py                   # Main bot entry point
-├── view_paper_trades.py         # View simulation/paper trade history
-└── README.md                    # This file
+├── grafana/                     # Dashboard configs
+├── scripts/                     # Test utilities
+└── .env.example                 # Environment template
 ```
-Testing
-Run tests for each phase independently:
 
-# Test individual phases
-```
-python scripts/test_data_sources.py
-python scripts/test_ingestion.py
-python scripts/test_nautilus.py
-python scripts/test_strategy.py
-python scripts/test_execution.py
-```
-🤝 Contributing
-Contributions are welcome! Here's how you can help:
-
- - Fork the repository
-
- - Create a feature branch: git checkout -b feature
-
- -Commit your changes: git commit -m 'Added feature'
-
-- Push to the branch: git push origin feature/added-feature
-
-Open a Pull Request
-
-## Ideas for Contributions
-- Add derivatives data (funding rates, open interest)
-
-- Implement more signal processors
-
-- Add Telegram/Discord alerts
-
-- Create web UI for management
-
-
-- Support for ETH/SOL markets
-
-- Machine learning optimization
+---
 
 ## ❓ FAQ
 
-**Q: How much money do I need to start?**  
-**A:** The bot caps each trade at $1, so you can start with as little as $10–20.
+**Q: How much money do I need to start?**
+A: The bot caps each trade at $1. You can start with $10–20.
 
-**Q: Is this profitable?**  
-**A:** Yes — in simulation testing it has shown good results (e.g. ~75% win rate in early runs).  
-However, **past performance does not guarantee future results**. Always test thoroughly in simulation mode first.
+**Q: What's the difference between test mode and normal mode?**
+A: Test mode trades every minute (fast feedback). Normal mode trades every 15 minutes matching the market timeframe.
 
-**Q: Do I need programming experience?**  
-**A:** Basic Python knowledge is helpful (e.g. understanding how to run scripts and edit config files), but the bot is designed to run with just a few simple commands — no coding required for normal use.
+**Q: Can I run this 24/7?**
+A: Yes. The bot includes auto-recovery, daily stats reset at UTC midnight, and WebSocket reconnection.
 
-**Q: Can I run this 24/7?**  
-**A:** Yes! The bot is built for continuous operation and includes basic auto-recovery features in case of temporary connection issues.
+**Q: What does "signal agreement" mean?**
+A: The trend filter determines direction (price > 0.60 → UP, < 0.40 → DOWN). Signal agreement checks if the 6 signal processors agree with that direction. If they disagree, the trade is skipped — reducing false signals. Disable with `REQUIRE_SIGNAL_AGREEMENT=false`.
 
-**Q: What's the difference between test mode and normal mode?**  
-**A:**  
-- **Test mode** — trades simulated every minute (great for quick testing and debugging)  
-- **Normal mode** — trades every 15 minutes (matches the intended 15-minute strategy timeframe)
+---
 
- 
-## Disclaimer
-TRADING CRYPTOCURRENCIES CARRIES SIGNIFICANT RISK.
+## ⚠️ Disclaimer
 
-This bot is for educational purposes
+**TRADING CRYPTOCURRENCIES CARRIES SIGNIFICANT RISK.**
 
-Past performance does not guarantee future results
+- This bot is for **educational purposes**
+- Past performance does not guarantee future results
+- Always understand the risks before trading with real money
+- The developers are not responsible for any financial losses
+- **Start with simulation mode → small amounts → scale up**
 
-Always understand the risks before trading with real money
+---
 
-The developers are not responsible for any financial losses
+## 🤝 Acknowledgments
 
-Start with simulation mode, then small amounts, then scale up
+- [NautilusTrader](https://nautilustrader.io/) — Professional trading framework
+- [Polymarket](https://polymarket.com) — Prediction market platform
 
-## Acknowledgments
-NautilusTrader - Professional trading framework
+## 📬 Contact & Community
 
-Polymarket - Prediction market platform
+- **GitHub Issues** — For bugs and feature requests
+- **Twitter** — [@Kator07](https://x.com/Kator07)
+- **Discord** — [Join our community](https://discord.gg/tafKjBnPEQ)
 
+[![Telegram](https://img.shields.io/badge/Telegram-%230088cc.svg?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/Bigg_O7)
 
-All contributors and users of this project
-
-## Contact & Community
-GitHub Issues: For bugs and feature requests
-
-Twitter: @Kator07
-
-##Discord: Join our community
-- https://discord.gg/tafKjBnPEQ
-
-## ⭐ Show Your Support
-If you find this project useful, please star the GitHub repo! It helps others discover it.
-
-## contact me on telegram 
- [![Telegram](https://img.shields.io/badge/Telegram-%230088cc.svg?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/Bigg_O7)
-
+⭐ If you find this project useful, please star the repo!
