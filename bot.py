@@ -169,6 +169,7 @@ class IntegratedBTCStrategy(Strategy):
 
         # Phase 5: Risk Management
         self.risk_engine = get_risk_engine()
+        self._last_reset_date = datetime.now(timezone.utc).date()  # S8: daily stats reset tracker
 
         # Phase 6: Performance Tracking
         self.performance_tracker = get_performance_tracker()
@@ -593,6 +594,14 @@ class IntegratedBTCStrategy(Strategy):
                 return
 
             now = datetime.now(timezone.utc)
+
+            # S8: Reset daily risk stats at UTC midnight
+            today = now.date()
+            if today != self._last_reset_date:
+                self.risk_engine.reset_daily_stats()
+                self._last_reset_date = today
+                logger.info(f"Daily stats reset for {today}")
+
             bid = tick.bid_price
             ask = tick.ask_price
 
@@ -908,22 +917,38 @@ class IntegratedBTCStrategy(Strategy):
 
         if price_float > cfg.TREND_UP_THRESHOLD:
             direction = "long"
-            trend_confidence = price_float  # e.g. 0.72 = 72% confident UP
-            logger.info(
-                f" TREND: UP ({price_float:.2%} YES probability) → buying YES"
-            )
+            trend_confidence = price_float
+            logger.info(f"TREND: UP ({price_float:.2%}) → buying YES")
         elif price_float < cfg.TREND_DOWN_THRESHOLD:
             direction = "short"
-            trend_confidence = 1.0 - price_float  # e.g. 0.31 price = 69% confident DOWN
-            logger.info(
-                f" TREND: DOWN ({price_float:.2%} YES probability = {1-price_float:.2%} NO) → buying NO"
-            )
+            trend_confidence = 1.0 - price_float
+            logger.info(f"TREND: DOWN ({price_float:.2%}) → buying NO")
         else:
             logger.info(
-                f"⏭ TREND: NEUTRAL ({price_float:.2%}) — price too close to 0.50, SKIPPING trade "
-                f"(coin flip territory: {cfg.TREND_DOWN_THRESHOLD:.0%}–{cfg.TREND_UP_THRESHOLD:.0%})"
+                f"⏭ TREND: NEUTRAL ({price_float:.2%}) — skipping "
+                f"({cfg.TREND_DOWN_THRESHOLD:.0%}–{cfg.TREND_UP_THRESHOLD:.0%})"
             )
             return
+
+        # --- S1: Signal Agreement Filter ---
+        # Check if the fused signal direction agrees with the trend.
+        # If signals say BEARISH but trend says long → signals disagree → skip.
+        from core.strategy_brain.signal_processors.base_processor import SignalDirection
+        trend_signal_dir = SignalDirection.BULLISH if direction == "long" else SignalDirection.BEARISH
+        signals_agree = (fused.direction is trend_signal_dir)
+
+        if not signals_agree:
+            if getattr(cfg, 'REQUIRE_SIGNAL_AGREEMENT', True):
+                logger.info(
+                    f"⏭ Signal disagreement: trend={direction} but "
+                    f"fused={fused.direction.value} — skipping trade"
+                )
+                return
+            else:
+                logger.warning(
+                    f"Signal disagreement: trend={direction} but "
+                    f"fused={fused.direction.value} — proceeding (agreement not required)"
+                )
 
         # Risk engine: only check position-count / exposure limits (no sizing math)
         is_valid, error = self.risk_engine.validate_new_position(

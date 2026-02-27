@@ -113,7 +113,6 @@ class SpikeDetectionProcessor(BaseSignalProcessor):
 
             # Fade the spike (mean reversion)
             direction = SignalDirection.BEARISH if deviation > 0 else SignalDirection.BULLISH
-            target = Decimal(str(ma))
 
             # Strength by magnitude (calibrated for 0-1 probability prices)
             if deviation_abs >= 0.12:
@@ -130,12 +129,6 @@ class SpikeDetectionProcessor(BaseSignalProcessor):
             if confidence < self.min_confidence:
                 return None
 
-            stop_distance = abs(Decimal(str(curr)) - Decimal(str(ma))) * Decimal("1.5")
-            stop_loss = (
-                Decimal(str(curr)) + stop_distance if direction == SignalDirection.BEARISH
-                else Decimal(str(curr)) - stop_distance
-            )
-
             signal = TradingSignal(
                 timestamp=datetime.now(),
                 source=self.name,
@@ -144,8 +137,6 @@ class SpikeDetectionProcessor(BaseSignalProcessor):
                 strength=strength,
                 confidence=confidence,
                 current_price=current_price,
-                target_price=target,
-                stop_loss=stop_loss,
                 metadata={
                     "detection_mode": "ma_deviation",
                     "deviation_pct": deviation,

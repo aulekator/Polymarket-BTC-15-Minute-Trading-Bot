@@ -75,6 +75,10 @@ async def record_paper_trade(strategy, signal, position_size, current_price, dir
             "simulated": True,
             "num_signals": signal.num_signals if hasattr(signal, 'num_signals') else 1,
             "fusion_score": signal.score,
+            # S3: Store signal sources so learning engine can attribute performance
+            "signal_sources": [
+                s.source for s in signal.signals
+            ] if hasattr(signal, 'signals') else [],
         }
     )
 

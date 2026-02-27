@@ -85,29 +85,35 @@ class TickVelocityProcessor(BaseSignalProcessor):
 
     def _get_price_at(
         self,
-        tick_buffer: List[Dict],
+        tick_buffer,
         seconds_ago: float,
         now: datetime,
     ) -> Optional[float]:
-        """Find the tick price closest to `seconds_ago` seconds before now."""
+        """
+        Find the tick price closest to `seconds_ago` seconds before now.
+
+        Optimized: iterates backward (newest first) and stops early once
+        past the target window. O(k) where k = ticks in lookback window.
+        """
         target = now - timedelta(seconds=seconds_ago)
         best = None
-        best_diff = float('inf')
+        best_diff = 15.0  # max tolerance in seconds
 
-        for tick in tick_buffer:
+        # Iterate backward — buffer is time-ordered, newest at end
+        for i in range(len(tick_buffer) - 1, -1, -1):
+            tick = tick_buffer[i]
             ts = tick['ts']
-            # Normalise timezone
             if ts.tzinfo is None:
                 ts = ts.replace(tzinfo=timezone.utc)
             diff = abs((ts - target).total_seconds())
             if diff < best_diff:
                 best_diff = diff
-                best = float(tick['price'])
+                best = tick['price']  # already float after C3 fix
+            # If we've gone more than 15s past the target, stop
+            elif (target - ts).total_seconds() > 15:
+                break
 
-        # Only return if within ±15s of target
-        if best_diff <= 15:
-            return best
-        return None
+        return best if best_diff <= 15.0 else None
 
     def process(
         self,

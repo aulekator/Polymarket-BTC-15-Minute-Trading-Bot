@@ -117,4 +117,12 @@ DATA_ENGINE_QSIZE = int(os.getenv("DATA_ENGINE_QSIZE", "6000"))
 EXEC_ENGINE_QSIZE = int(os.getenv("EXEC_ENGINE_QSIZE", "6000"))
 TRADER_ID = os.getenv("TRADER_ID", "BTC-15MIN-INTEGRATED-001")
 LOG_LEVEL = os.getenv("NAUTILUS_LOG_LEVEL", "INFO")
+
+# =============================================================================
+# Signal Agreement
+# =============================================================================
+# When True, the bot will only trade when fused signal direction agrees with
+# the trend filter (price-based direction). This prevents contradictory trades
+# where e.g. spike detector says BEARISH but price says buy YES.
+REQUIRE_SIGNAL_AGREEMENT = os.getenv("REQUIRE_SIGNAL_AGREEMENT", "true").lower() == "true"
 LOG_DIR = os.getenv("NAUTILUS_LOG_DIR", "./logs/nautilus")

@@ -28,6 +28,7 @@ KEY INSIGHT:
 """
 from decimal import Decimal
 from datetime import datetime
+from collections import deque
 from typing import Optional, Dict, Any, List
 from loguru import logger
 
@@ -79,8 +80,7 @@ class PriceDivergenceProcessor(BaseSignalProcessor):
         self.low_prob_threshold = low_prob_threshold
 
         # Rolling spot price history for momentum calculation
-        self._spot_history: List[float] = []
-        self._max_spot_history = 10  # last 10 readings (~2.5 min of data)
+        self._spot_history: deque = deque(maxlen=10)  # ~2.5 min of data
 
         logger.info(
             f"Initialized Price Divergence Processor (FIXED): "
@@ -114,9 +114,7 @@ class PriceDivergenceProcessor(BaseSignalProcessor):
 
         # --- Update spot price history for momentum ---
         if spot_price is not None:
-            self._spot_history.append(float(spot_price))
-            if len(self._spot_history) > self._max_spot_history:
-                self._spot_history.pop(0)
+            self._spot_history.append(float(spot_price))  # deque auto-evicts
 
         # --- Compute spot momentum ---
         spot_momentum = 0.0

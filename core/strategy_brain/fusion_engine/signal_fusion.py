@@ -48,10 +48,13 @@ class FusedSignal:
 class SignalFusionEngine:
     def __init__(self):
         self.weights = {
-            "SpikeDetection":    0.40,
-            "PriceDivergence":   0.30,
-            "SentimentAnalysis": 0.20,
-            "default":           0.10,
+            "SpikeDetection":       0.15,
+            "PriceDivergence":      0.10,
+            "SentimentAnalysis":    0.10,
+            "TickVelocity":         0.25,   # Most direct: Polymarket orderflow
+            "OrderBookImbalance":   0.25,   # Real-time CLOB depth
+            "DeribitPCR":           0.15,   # Institutional options sentiment
+            "default":              0.05,
         }
 
         # Use deque for O(1) eviction instead of list.pop(0)
