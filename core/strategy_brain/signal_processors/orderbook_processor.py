@@ -82,7 +82,8 @@ class OrderBookImbalanceProcessor(BaseSignalProcessor):
         self.min_confidence = min_confidence
         self.top_levels = top_levels
 
-        # HTTP client created fresh per request (synchronous, safe in Nautilus event loop)
+        # Reusable HTTP client (lazily created, connection pool retained across calls)
+        self._http_client: Optional[httpx.Client] = None
         self._cache: Optional[Dict] = None
 
         logger.info(
@@ -93,19 +94,21 @@ class OrderBookImbalanceProcessor(BaseSignalProcessor):
         )
 
     def _get_client(self) -> httpx.Client:
-        """Return a synchronous httpx client (safe inside NautilusTrader's event loop)."""
-        return httpx.Client(timeout=5.0)
+        """Return a reusable synchronous httpx client (connection pool retained)."""
+        if self._http_client is None:
+            self._http_client = httpx.Client(timeout=5.0)
+        return self._http_client
 
     def fetch_order_book(self, token_id: str) -> Optional[Dict]:
         """Fetch order book from Polymarket CLOB synchronously."""
         try:
-            with self._get_client() as client:
-                resp = client.get(
-                    f"{CLOB_BASE}/book",
-                    params={"token_id": token_id},
-                )
-                resp.raise_for_status()
-                return resp.json()
+            client = self._get_client()
+            resp = client.get(
+                f"{CLOB_BASE}/book",
+                params={"token_id": token_id},
+            )
+            resp.raise_for_status()
+            return resp.json()
         except Exception as e:
             logger.warning(f"OrderBook fetch failed for {token_id[:16]}…: {e}")
             return None

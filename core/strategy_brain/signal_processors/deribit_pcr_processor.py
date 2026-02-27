@@ -83,6 +83,9 @@ class DeribitPCRProcessor(BaseSignalProcessor):
         self._cached_result: Optional[Dict] = None
         self._cache_time: Optional[datetime] = None
 
+        # Reusable HTTP client (lazily created, connection pool retained across calls)
+        self._http_client: Optional[httpx.Client] = None
+
         logger.info(
             f"Initialized Deribit PCR Processor: "
             f"bullish_pcr>{bullish_pcr_threshold}, "
@@ -91,8 +94,10 @@ class DeribitPCRProcessor(BaseSignalProcessor):
         )
 
     def _get_client(self) -> httpx.Client:
-        """Return a synchronous httpx client (safe inside NautilusTrader's event loop)."""
-        return httpx.Client(timeout=8.0)
+        """Return a reusable synchronous httpx client (connection pool retained)."""
+        if self._http_client is None:
+            self._http_client = httpx.Client(timeout=8.0)
+        return self._http_client
 
     def _parse_dte(self, instrument_name: str) -> Optional[int]:
         """
@@ -114,13 +119,13 @@ class DeribitPCRProcessor(BaseSignalProcessor):
     def _fetch_pcr(self) -> Optional[Dict]:
         """Fetch and compute PCR from Deribit synchronously."""
         try:
-            with self._get_client() as client:
-                resp = client.get(
-                    DERIBIT_URL,
-                    params={"currency": "BTC", "kind": "option"},
-                )
-                resp.raise_for_status()
-                data = resp.json()
+            client = self._get_client()
+            resp = client.get(
+                DERIBIT_URL,
+                params={"currency": "BTC", "kind": "option"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
 
             summaries = data.get("result", [])
             if not summaries:

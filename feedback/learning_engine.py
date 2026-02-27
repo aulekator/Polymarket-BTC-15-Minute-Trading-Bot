@@ -3,8 +3,10 @@ Learning Engine
 Learns from trading performance to optimize strategy weights
 """
 import asyncio
+import json
 from decimal import Decimal
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from loguru import logger
@@ -67,6 +69,12 @@ class LearningEngine:
         
         # Learning history
         self._weight_adjustments: List[Dict[str, Any]] = []
+        
+        # Persistence
+        self._state_file = Path("learning_state.json")
+        
+        # Auto-load saved state if available
+        self._load_state()
         
         logger.info(
             f"Initialized Learning Engine "
@@ -246,7 +254,48 @@ class LearningEngine:
         
         logger.info("✓ Weights optimized successfully")
         
+        # Auto-save after optimization
+        self._save_state()
+        
         return new_weights
+    
+    def _save_state(self) -> None:
+        """Persist weights and learning history to disk."""
+        try:
+            state = {
+                "saved_at": datetime.now().isoformat(),
+                "weights": dict(self.fusion.weights),
+                "adjustments_count": len(self._weight_adjustments),
+                "last_adjustment": (
+                    {
+                        k: v for k, v in self._weight_adjustments[-1].items()
+                        if k != "timestamp"  # datetime not JSON serializable
+                    }
+                    if self._weight_adjustments else None
+                ),
+            }
+            self._state_file.write_text(json.dumps(state, indent=2))
+            logger.info(f"Learning state saved to {self._state_file}")
+        except Exception as e:
+            logger.warning(f"Failed to save learning state: {e}")
+    
+    def _load_state(self) -> None:
+        """Restore weights from disk if state file exists."""
+        if not self._state_file.exists():
+            return
+        try:
+            state = json.loads(self._state_file.read_text())
+            saved_weights = state.get("weights", {})
+            if saved_weights:
+                for source, weight in saved_weights.items():
+                    self.fusion.set_weight(source, weight)
+                logger.info(
+                    f"Restored learning state from {self._state_file} "
+                    f"(saved at {state.get('saved_at', 'unknown')}, "
+                    f"{state.get('adjustments_count', 0)} prior adjustments)"
+                )
+        except Exception as e:
+            logger.warning(f"Failed to load learning state: {e}")
     
     def get_signal_rankings(self) -> List[Dict[str, Any]]:
         """
