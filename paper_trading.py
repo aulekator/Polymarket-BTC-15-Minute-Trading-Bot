@@ -24,8 +24,9 @@ async def record_paper_trade(strategy, signal, position_size, current_price, dir
       Price = 0.72 → 72% chance resolves UP (YES=1.00, NO=0.00)
       Price = 0.35 → 35% chance resolves UP (65% chance DOWN wins)
     """
+    now_utc = datetime.now(timezone.utc)
     exit_delta = timedelta(minutes=1) if strategy.test_mode else timedelta(minutes=15)
-    exit_time = datetime.now(timezone.utc) + exit_delta
+    exit_time = now_utc + exit_delta
 
     price_float = float(current_price)
     up_probability = price_float  # The price IS the probability
@@ -50,7 +51,7 @@ async def record_paper_trade(strategy, signal, position_size, current_price, dir
 
     outcome = "WIN" if pnl > 0 else "LOSS"
     paper_trade = PaperTrade(
-        timestamp=datetime.now(timezone.utc),
+        timestamp=now_utc,
         direction=direction.upper(),
         size_usd=float(position_size),
         price=float(current_price),
@@ -61,12 +62,12 @@ async def record_paper_trade(strategy, signal, position_size, current_price, dir
     strategy.paper_trades.append(paper_trade)
 
     strategy.performance_tracker.record_trade(
-        trade_id=f"paper_{int(datetime.now().timestamp())}",
+        trade_id=f"paper_{int(now_utc.timestamp())}",
         direction=direction,
         entry_price=current_price,
         exit_price=exit_price,
         size=position_size,
-        entry_time=datetime.now(timezone.utc),
+        entry_time=now_utc,
         exit_time=exit_time,
         signal_score=signal.score,
         signal_confidence=signal.confidence,
