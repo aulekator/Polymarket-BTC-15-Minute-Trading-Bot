@@ -4,7 +4,6 @@
 
 # Environment files (contain private keys, API keys, passwords)
 .env
-.env.*
 .env.local
 .env.production
 .env.development
