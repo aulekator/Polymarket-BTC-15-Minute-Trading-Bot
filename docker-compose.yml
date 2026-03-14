@@ -1,0 +1,21 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  bot:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - redis
+    env_file:
+      - .env
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 2
+    command: ["python", "15m_bot_runner.py", "--live"]
+    # For test mode instead:
+    # command: ["python", "run_bot.py", "--test-mode"]
